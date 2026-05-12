@@ -1,5 +1,5 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Body
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 from pathlib import Path
@@ -9,6 +9,12 @@ from sqlmodel import Session, select
 from .parser import parse_resume
 from . import jobs as jobs_module
 import os
+import io
+from docx import Document
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 
 app = FastAPI(title="Resume Agent Backend")
 
@@ -166,6 +172,52 @@ async def tailor_resume(
         f"Tailored for job:\n{job_description or 'N/A'}\n\n{resume.parsed_text or ''}"
     )
     return {"tailored": tailored}
+
+
+@app.post("/export/pdf")
+async def export_pdf(payload: dict = Body(...), user=Depends(auth.get_current_user)):
+    content = payload.get("content", "")
+    filename = payload.get("filename", "tailored_resume.pdf")
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    
+    # Create ATS-friendly flowables
+    flowables = []
+    for line in content.split("\n"):
+        if line.strip():
+            flowables.append(Paragraph(line, styles["Normal"]))
+        flowables.append(Spacer(1, 12))
+    
+    doc.build(flowables)
+    buffer.seek(0)
+    
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@app.post("/export/docx")
+async def export_docx(payload: dict = Body(...), user=Depends(auth.get_current_user)):
+    content = payload.get("content", "")
+    filename = payload.get("filename", "tailored_resume.docx")
+
+    doc = Document()
+    for line in content.split("\n"):
+        doc.add_paragraph(line)
+    
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 # include auth router

@@ -152,21 +152,23 @@ async def login_google(request: Request):
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
-@router.get("/auth/google/callback")
+@router.get("/google/callback")
 async def auth_google_callback(request: Request):
     token = await oauth.google.authorize_access_token(request)
     userinfo = await oauth.google.parse_id_token(request, token)
     email = userinfo.get("email")
     if not email:
         raise HTTPException(status_code=400, detail="No email from provider")
-        with Session(engine) as session:
-            statement = select(User).where(User.email == email)
-            user = session.exec(statement).first()
-            if not user:
-                user = User(email=email, hashed_password="")
-                session.add(user)
-                session.commit()
-                session.refresh(user)
+    
+    with Session(engine) as session:
+        statement = select(User).where(User.email == email)
+        user = session.exec(statement).first()
+        if not user:
+            user = User(email=email, hashed_password="")
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            
     access_token = create_access_token({"sub": email})
     frontend = os.getenv("FRONTEND_URL", "http://localhost:3000")
     return RedirectResponse(f"{frontend}/?token={access_token}")
@@ -194,7 +196,7 @@ async def login_linkedin(request: Request):
     return await oauth.linkedin.authorize_redirect(request, redirect_uri)
 
 
-@router.get("/auth/linkedin/callback")
+@router.get("/linkedin/callback")
 async def auth_linkedin_callback(request: Request):
     token = await oauth.linkedin.authorize_access_token(request)
     # LinkedIn requires separate calls to get email and profile

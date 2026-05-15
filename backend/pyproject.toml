@@ -3,13 +3,14 @@ name = "resume-agent-backend"
 version = "0.1.0"
 description = "FastAPI backend for resume analysis and job search"
 authors = ["You <you@example.com>"]
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.11"
 fastapi = "^0.100.0"
 uvicorn = {extras=["standard"],version="^0.22.0"}
 python-multipart = "^0.0.6"
-sqlmodel = "^0.0.8"
+sqlmodel = "^0.0.14"
 aiohttp = "^3.8.0"
 pydantic = "^2.6.0"
 PyMuPDF = "^1.22.0"
@@ -19,6 +20,10 @@ passlib = "^1.7.4"
 python-jose = "^3.3.0"
 email-validator = "^2.0.0"
 bcrypt = ">=4.0.0,<5.0.0"
+Pillow= "^12.2.0"
+lxml= "^6.1.0"
+python-docx= "^1.2.0"
+reportlab= "^4.5.1"
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.0"

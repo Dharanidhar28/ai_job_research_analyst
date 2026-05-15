@@ -21,7 +21,7 @@ app = FastAPI(title="Resume Agent Backend")
 # Simple CORS for local dev
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -116,13 +116,27 @@ async def search_jobs(
             if not resume or resume.user_id != user.id:
                 raise HTTPException(status_code=404, detail="Resume not found")
             if resume.parsed_text:
-                # simple keyword extraction: take top words
-                words = [
-                    w
-                    for w in resume.parsed_text.replace("\n", " ").split(" ")
-                    if len(w) > 4
-                ]
-                query = " ".join(words[:6])
+                # Better keyword extraction using spaCy
+                import spacy
+                try:
+                    # Use small model, load only once if possible but for simplicity load here
+                    nlp = spacy.load("en_core_web_sm")
+                    doc = nlp(resume.parsed_text[:2000]) # process first 2k chars
+                    # Extract nouns and proper nouns, ignore common stop words
+                    keywords = [token.text for token in doc if token.pos_ in ["NOUN", "PROPN"] and not token.is_stop and len(token.text) > 2]
+                    # Take top 8 unique keywords
+                    unique_keywords = []
+                    for k in keywords:
+                        if k.lower() not in [uk.lower() for uk in unique_keywords]:
+                            unique_keywords.append(k)
+                        if len(unique_keywords) >= 8:
+                            break
+                    query = " ".join(unique_keywords)
+                except Exception as e:
+                    print(f"Spacy error: {e}")
+                    # fallback to previous logic
+                    words = [w for w in resume.parsed_text.replace("\n", " ").split(" ") if len(w) > 4]
+                    query = " ".join(words[:6])
             else:
                 query = resume.filename
     if not query:
@@ -142,37 +156,56 @@ async def tailor_resume(
         if not resume or resume.user_id != user.id:
             raise HTTPException(status_code=404, detail="Resume not found")
     # simple fallback tailoring: prepend a header; if OPENAI_API_KEY set, call OpenAI to rewrite
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if openai_key and job_description:
+    # simple fallback tailoring: prepend a header; if GEMINI_API_KEY set, call Gemini to rewrite
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if gemini_key and job_description:
         import aiohttp
 
-        prompt = f"Rewrite the following resume to be ATS-friendly and tailored to this job description:\n\nJOB DESCRIPTION:\n{job_description}\n\nRESUME:\n{resume.parsed_text or ''}\n\nReturn the rewritten resume text only."
+        # Updated prompt to explicitly ban Markdown for cleaner PDF/DOCX exports
+        prompt = (
+            "Rewrite the following resume to be ATS-friendly and tailored to this job description. "
+            "IMPORTANT: Do NOT use any Markdown formatting, bolding (**), italics, or hashtags. "
+            "Return ONLY plain text with standard line breaks.\n\n"
+            f"JOB DESCRIPTION:\n{job_description}\n\n"
+            f"RESUME:\n{resume.parsed_text or ''}"
+        )
+        
+        # Gemini API Endpoint
+        # New Gemini API Endpoint
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}"
+        
         async with aiohttp.ClientSession() as session_http:
             headers = {
-                "Authorization": f"Bearer {openai_key}",
                 "Content-Type": "application/json",
             }
             body = {
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 1500,
+                "contents": [{"parts":[{"text": prompt}]}]
             }
-            async with session_http.post(
-                "https://api.openai.com/v1/chat/completions", json=body, headers=headers
-            ) as resp:
+            
+            async with session_http.post(url, json=body, headers=headers) as resp:
                 data = await resp.json()
-                tailored = (
-                    data["choices"][0]["message"]["content"]
-                    if data.get("choices")
-                    else None
-                )
+                try:
+                    # Extract text from Gemini's specific JSON response structure
+                    tailored = data["candidates"][0]["content"]["parts"][0]["text"]
+                except (KeyError, IndexError):
+                    tailored = f"Error generating tailoring from Gemini. Response: {data}"
+                
                 return {"tailored": tailored}
-    # fallback simple tailoring
-    tailored = (
-        f"Tailored for job:\n{job_description or 'N/A'}\n\n{resume.parsed_text or ''}"
-    )
-    return {"tailored": tailored}
 
+    # fallback simple tailoring
+    if not gemini_key:
+        tailored = (
+            "--- AI TAILORING NOTE: GEMINI_API_KEY is not set. Showing a simulated preview. ---\n\n"
+            f"RELEVANT JOB KEYWORDS IDENTIFIED:\n"
+            f"{', '.join(job_description.split()[:10])}...\n\n"
+            f"ORIGINAL RESUME CONTENT:\n"
+            f"{resume.parsed_text or 'No parsed text available. Please parse the resume first.'}"
+        )
+    else:
+        tailored = f"Tailored for job:\n{job_description or 'N/A'}\n\n{resume.parsed_text or ''}"
+    return {"tailored": tailored}
+    # fallback simple tailoring
+    
 
 @app.post("/export/pdf")
 async def export_pdf(payload: dict = Body(...), user=Depends(auth.get_current_user)):
@@ -218,6 +251,23 @@ async def export_docx(payload: dict = Body(...), user=Depends(auth.get_current_u
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+@app.get("/jobs/recommended")
+async def get_recommended_jobs(user=Depends(auth.get_current_user)):
+    with Session(auth.engine) as session:
+        # Find latest parsed resume
+        statement = select(Resume).where(Resume.user_id == user.id, Resume.parsed_text != None).order_by(Resume.id.desc())
+        resume = session.exec(statement).first()
+        if not resume:
+            # Try latest unparsed resume
+            statement = select(Resume).where(Resume.user_id == user.id).order_by(Resume.id.desc())
+            resume = session.exec(statement).first()
+            if not resume:
+                return []
+    
+    # Use existing search logic
+    return await search_jobs(resume_id=resume.id, user=user)
 
 
 # include auth router

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobResearchAI - Your Resumes</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <main>
+        <div class="container">
+            <div style="margin-bottom: 2rem; display: flex; justify-content: space-between; align-items: center">
+                <h2>Your Resumes</h2>
+                <a href="upload.html" class="btn btn-primary">Upload New</a>
+            </div>
+
+            <div id="message-area" style="display: none; margin-bottom: 1.5rem" class="card"></div>
+
+            <div id="resumes-grid" class="grid">
+                <!-- Resumes will be loaded here -->
+                <p id="loading-text">Loading resumes...</p>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/api.js"></script>
+    <script src="js/common.js"></script>
+    <script>
+        const resumesGrid = document.getElementById('resumes-grid');
+        const messageArea = document.getElementById('message-area');
+
+        async function fetchResumes() {
+            try {
+                const res = await apiRequest('/resumes');
+                if (res.ok) {
+                    const resumes = await res.json();
+                    renderResumes(resumes);
+                } else {
+                    const err = await res.json();
+                    showMessage(err.detail || 'Failed to fetch resumes', '#ef4444');
+                    resumesGrid.innerHTML = '';
+                }
+            } catch (err) {
+                showMessage(err.message, '#ef4444');
+                resumesGrid.innerHTML = '';
+            }
+        }
+
+        function showMessage(msg, color = 'var(--primary)') {
+            messageArea.style.display = 'block';
+            messageArea.style.color = color;
+            messageArea.style.fontWeight = '500';
+            messageArea.textContent = msg;
+            setTimeout(() => { messageArea.style.display = 'none'; }, 5000);
+        }
+
+        function renderResumes(resumes) {
+            if (resumes.length === 0) {
+                resumesGrid.innerHTML = `
+                    <div class="card" style="text-align: center; padding: 4rem; grid-column: 1 / -1">
+                        <p style="color: var(--text-muted); margin-bottom: 1.5rem">You haven't uploaded any resumes yet.</p>
+                        <a href="upload.html" class="btn btn-primary">Upload Your First Resume</a>
+                    </div>
+                `;
+                return;
+            }
+
+            resumesGrid.innerHTML = resumes.map(r => `
+                <div class="card grid-item">
+                    <div class="item-header">
+                        <div>
+                            <h3 style="margin-bottom: 0.25rem">${r.filename}</h3>
+                            <p style="font-size: 0.875rem; color: var(--text-muted)">Version ${r.version} | ID: ${r.id}</p>
+                        </div>
+                        <span class="badge ${r.parsed ? 'badge-success' : ''}">
+                            ${r.parsed ? 'Parsed' : 'Pending'}
+                        </span>
+                    </div>
+                    
+                    <div class="item-actions">
+                        <button 
+                            onclick="parseResume(${r.id})" 
+                            class="btn btn-outline"
+                            style="flex: 1; font-size: 0.875rem"
+                            ${r.parsed ? '' : ''}
+                        >
+                            ${r.parsed ? 'Re-parse' : 'Parse Now'}
+                        </button>
+                        <button 
+                            onclick="searchJobs(${r.id})" 
+                            class="btn btn-primary"
+                            style="flex: 1; font-size: 0.875rem"
+                        >
+                            Search Jobs
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function parseResume(id) {
+            showMessage('Parsing...');
+            try {
+                const res = await apiRequest(`/parse_resume/${id}`, { method: 'POST' });
+                if (res.ok) {
+                    showMessage('Parsed resume successfully!');
+                    fetchResumes();
+                } else {
+                    const err = await res.json();
+                    showMessage(err.detail || 'Parsing failed', '#ef4444');
+                }
+            } catch (err) {
+                showMessage(err.message, '#ef4444');
+            }
+        }
+
+        async function searchJobs(id) {
+            showMessage('Searching for jobs...');
+            try {
+                const res = await apiRequest(`/jobs/search?resume_id=${id}`);
+                if (res.ok) {
+                    const jobs = await res.json();
+                    localStorage.setItem('last_jobs', JSON.stringify(jobs));
+                    window.location.href = 'jobs.html';
+                } else {
+                    const err = await res.json();
+                    showMessage(err.detail || 'Job search failed', '#ef4444');
+                }
+            } catch (err) {
+                showMessage(err.message, '#ef4444');
+            }
+        }
+
+        fetchResumes();
+    </script>
+</body>
+</html>

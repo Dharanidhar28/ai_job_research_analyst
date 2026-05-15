@@ -1,4 +1,4 @@
-const API_URL = window.location.protocol + '//' + window.location.hostname + ':8000';
+const API_URL = "https://ai-job-research-analyst.onrender.com";
 
 async function apiRequest(endpoint, options = {}) {
     const token = localStorage.getItem('token');

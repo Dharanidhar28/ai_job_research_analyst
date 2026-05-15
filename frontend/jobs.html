@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobResearchAI - Job Results</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <main>
+        <div class="container">
+            <div style="margin-bottom: 2rem">
+                <h2>Job Results</h2>
+                <p id="results-meta" style="color: var(--text-muted)">
+                    Showing 0 jobs matched based on your resume.
+                </p>
+            </div>
+
+            <div id="jobs-grid" class="grid">
+                <!-- Jobs will be loaded here -->
+            </div>
+        </div>
+    </main>
+
+    <script src="js/common.js"></script>
+    <script>
+        const jobsGrid = document.getElementById('jobs-grid');
+        const resultsMeta = document.getElementById('results-meta');
+
+        async function renderJobs() {
+            let data = localStorage.getItem('last_jobs');
+            
+            if (!data) {
+                // Try to fetch recommended jobs if logged in
+                const token = localStorage.getItem('token');
+                if (token) {
+                    jobsGrid.innerHTML = '<p style="text-align: center; grid-column: 1 / -1">Finding recommended jobs for your resume...</p>';
+                    try {
+                        const res = await apiRequest('/jobs/recommended');
+                        if (res.ok) {
+                            const jobs = await res.json();
+                            if (jobs.length > 0) {
+                                localStorage.setItem('last_jobs', JSON.stringify(jobs));
+                                data = JSON.stringify(jobs);
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch recommended jobs:', err);
+                    }
+                }
+            }
+
+            if (!data) {
+                jobsGrid.innerHTML = `
+                    <div class="card" style="text-align: center; padding: 4rem; grid-column: 1 / -1">
+                        <p style="color: var(--text-muted); margin-bottom: 1.5rem">No job results found. Try searching from the Resumes page.</p>
+                        <a href="resumes.html" class="btn btn-primary">Go to Resumes</a>
+                    </div>
+                `;
+                return;
+            }
+
+            const jobs = JSON.parse(data);
+            resultsMeta.textContent = `Showing ${jobs.length} jobs matched based on your resume.`;
+
+            if (jobs.length === 0) {
+                 jobsGrid.innerHTML = `
+                    <div class="card" style="text-align: center; padding: 4rem; grid-column: 1 / -1">
+                        <p style="color: var(--text-muted); margin-bottom: 1.5rem">No job results found. Try searching from the Resumes page.</p>
+                        <a href="resumes.html" class="btn btn-primary">Go to Resumes</a>
+                    </div>
+                `;
+                return;
+            }
+
+            jobsGrid.innerHTML = jobs.map(j => `
+                <div class="card grid-item">
+                    <div>
+                        <div class="item-header">
+                            <h3 style="margin-bottom: 0.25rem">${j.title}</h3>
+                            <span class="badge">${j.location}</span>
+                        </div>
+                        <p style="font-weight: 600; color: var(--primary); margin-bottom: 1rem">${j.company}</p>
+                        
+                        <div style="font-size: 0.875rem; color: var(--text-muted); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;">
+                            ${j.description || ""}
+                        </div>
+                    </div>
+                    
+                    <div class="item-actions">
+                        <a 
+                            href="${j.redirect_url}" 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            class="btn btn-primary"
+                            style="width: 100%"
+                        >
+                            Apply Now
+                        </a>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        renderJobs();
+    </script>
+</body>
+</html>

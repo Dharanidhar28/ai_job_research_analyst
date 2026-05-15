@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobResearchAI - Upload Resume</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <main>
+        <div class="container">
+            <div style="max-width: 600px; margin: 0 auto">
+                <div class="card">
+                    <h2>Upload Resume</h2>
+                    <p style="color: var(--text-muted); marginBottom: 1.5rem">
+                        Select your resume (PDF or DOCX) to start the analysis process.
+                    </p>
+
+                    <form id="upload-form">
+                        <div class="form-group">
+                            <div id="drop-zone" style="border: 2px dashed var(--border); border-radius: var(--radius); padding: 2rem; text-align: center; cursor: pointer;">
+                                <input 
+                                    type="file" 
+                                    id="resume-upload"
+                                    name="file"
+                                    style="display: none"
+                                    accept=".pdf,.docx"
+                                />
+                                <label for="resume-upload" style="cursor: pointer" id="file-label">
+                                    <p style="font-weight: 600">Click to select a file</p>
+                                    <p style="font-size: 0.875rem; color: var(--text-muted)">PDF, DOCX up to 5MB</p>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div id="status-msg" style="margin-bottom: 1rem; font-size: 0.875rem; display: none;"></div>
+
+                        <button type="submit" id="submit-btn" class="btn btn-primary" style="width: 100%">
+                            Upload Resume
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/api.js"></script>
+    <script src="js/common.js"></script>
+    <script>
+        const fileInput = document.getElementById('resume-upload');
+        const fileLabel = document.getElementById('file-label');
+        const dropZone = document.getElementById('drop-zone');
+        const statusMsg = document.getElementById('status-msg');
+        const submitBtn = document.getElementById('submit-btn');
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                const fileName = e.target.files[0].name;
+                fileLabel.innerHTML = `<span style="font-weight: 600; color: var(--secondary)">${fileName} selected</span>`;
+                dropZone.style.background = 'rgba(20, 184, 166, 0.05)';
+                dropZone.style.borderColor = 'var(--secondary)';
+            }
+        });
+
+        document.getElementById('upload-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const token = localStorage.getItem('token');
+            if (!token) {
+                alert("Please login first to upload resumes.");
+                window.location.href = 'login.html';
+                return;
+            }
+
+            if (fileInput.files.length === 0) {
+                alert("Please select a file to upload.");
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Uploading...';
+            statusMsg.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const res = await fetch(`${API_URL}/upload_resume`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formData
+                });
+
+                const result = await res.json();
+                if (res.ok) {
+                    statusMsg.style.display = 'block';
+                    statusMsg.style.color = 'var(--secondary)';
+                    statusMsg.textContent = `Successfully uploaded: ${result.filename}. Parsing...`;
+                    
+                    // Automatically trigger parse
+                    try {
+                        const parseRes = await apiRequest(`/parse_resume/${result.id}`, { method: 'POST' });
+                        if (parseRes.ok) {
+                            statusMsg.textContent = `Successfully uploaded and parsed: ${result.filename}`;
+                        } else {
+                            statusMsg.textContent = `Uploaded ${result.filename}, but auto-parsing failed. You can parse it manually in the Resumes page.`;
+                        }
+                    } catch (parseErr) {
+                        statusMsg.textContent = `Uploaded ${result.filename}, but error during auto-parsing.`;
+                    }
+
+                    fileInput.value = '';
+                    fileLabel.innerHTML = `<p style="font-weight: 600">Click to select a file</p><p style="font-size: 0.875rem; color: var(--text-muted)">PDF, DOCX up to 5MB</p>`;
+                    dropZone.style.background = 'transparent';
+                    dropZone.style.borderColor = 'var(--border)';
+                } else {
+                    statusMsg.style.display = 'block';
+                    statusMsg.style.color = '#ef4444';
+                    statusMsg.textContent = result.detail || 'Upload failed';
+                }
+            } catch (err) {
+                statusMsg.style.display = 'block';
+                statusMsg.style.color = '#ef4444';
+                statusMsg.textContent = err.message;
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Upload Resume';
+            }
+        });
+    </script>
+</body>
+</html>

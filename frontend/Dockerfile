@@ -1,7 +1,11 @@
-FROM node:20-alpine
-WORKDIR /usr/src/app
-COPY package.json /usr/src/app/
-RUN npm install
-COPY . /usr/src/app
-EXPOSE 3000
-CMD ["npm", "run", "dev"]
+# Use Nginx to serve the static files
+FROM nginx:alpine
+
+# Copy the static files to the Nginx html directory
+COPY . /usr/share/nginx/html
+
+# Expose port 80
+EXPOSE 80
+
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]

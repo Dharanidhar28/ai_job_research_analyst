@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobResearchAI - Tailor Resume</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <main>
+        <div class="container">
+            <div style="max-width: 800px; margin: 0 auto">
+                <h2>Tailor Your Resume</h2>
+                <p style="color: var(--text-muted); margin-bottom: 2rem">
+                    Optimize your resume for a specific job description using AI.
+                </p>
+
+                <div class="card">
+                    <form id="tailor-form">
+                        <div class="form-group">
+                            <label class="form-label">Resume ID</label>
+                            <input
+                                class="form-input"
+                                id="resume-id"
+                                placeholder="e.g. 1"
+                                required
+                            />
+                            <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem">
+                                You can find the ID on the <a href="resumes.html" style="color: var(--primary)">Resumes</a> page.
+                            </p>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Job Description</label>
+                            <textarea
+                                class="form-input"
+                                id="job-description"
+                                placeholder="Paste the job description here..."
+                                rows="10"
+                                required
+                            ></textarea>
+                        </div>
+                        <button type="submit" id="submit-btn" class="btn btn-primary" style="width: 100%">
+                            Tailor Resume
+                        </button>
+                    </form>
+
+                    <div id="result-container" style="display: none">
+                        <div class="result-area" id="result-text">
+                            <div style="font-weight: 600; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem">
+                                AI-Tailored Content
+                            </div>
+                            <div id="tailored-content"></div>
+                        </div>
+                        
+                        <div style="margin-top: 2rem">
+                            <p style="font-weight: 600; margin-bottom: 1rem">Download tailored resume:</p>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem">
+                                <button id="download-pdf" class="btn btn-outline">Download PDF</button>
+                                <button id="download-docx" class="btn btn-outline">Download Word (.docx)</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/api.js"></script>
+    <script src="js/common.js"></script>
+    <script>
+        const tailorForm = document.getElementById('tailor-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const resultContainer = document.getElementById('result-container');
+        const tailoredContent = document.getElementById('tailored-content');
+        const downloadPdfBtn = document.getElementById('download-pdf');
+        const downloadDocxBtn = document.getElementById('download-docx');
+
+        let currentResult = "";
+
+        tailorForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const resumeId = document.getElementById('resume-id').value;
+            const jd = document.getElementById('job-description').value;
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Generating Tailored Content...';
+            resultContainer.style.display = 'none';
+
+            try {
+                const res = await apiRequest(`/tailor/${resumeId}`, {
+                    method: 'POST',
+                    body: JSON.stringify({ job_description: jd })
+                });
+
+                const result = await res.json();
+                if (res.ok) {
+                    currentResult = result.tailored;
+                    tailoredContent.textContent = currentResult;
+                    resultContainer.style.display = 'block';
+                } else {
+                    alert(result.detail || 'Tailoring failed');
+                }
+            } catch (err) {
+                alert(err.message);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Tailor Resume';
+            }
+        });
+
+        async function download(format) {
+            const btn = format === 'pdf' ? downloadPdfBtn : downloadDocxBtn;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Preparing...';
+
+            try {
+                const res = await apiRequest(`/export/${format}`, {
+                    method: 'POST',
+                    body: JSON.stringify({ content: currentResult, filename: `tailored_resume.${format}` })
+                });
+
+                if (res.ok) {
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.setAttribute('download', `tailored_resume.${format}`);
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                } else {
+                    alert('Export failed');
+                }
+            } catch (err) {
+                alert('Export failed: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        downloadPdfBtn.addEventListener('click', () => download('pdf'));
+        downloadDocxBtn.addEventListener('click', () => download('docx'));
+    </script>
+</body>
+</html>

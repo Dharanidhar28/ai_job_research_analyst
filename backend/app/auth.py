@@ -12,13 +12,13 @@ from .models import User
 from sqlmodel import Session, create_engine, select
 from pathlib import Path
 
-SECRET_KEY = "dev-secret-key-change-me"
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-me")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-DATABASE_URL = "sqlite:///./test.db"
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test.db")
 engine = create_engine(DATABASE_URL, echo=False)
 User.metadata.create_all(engine)
 
